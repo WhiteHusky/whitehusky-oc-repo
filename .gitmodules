@@ -1,0 +1,6 @@
+[submodule "lua-streaming-tables"]
+	path = lua-streaming-tables
+	url = https://github.com/WhiteHusky/lua-streaming-tables
+[submodule "streaming-tables"]
+	path = streaming-tables
+	url = https://github.com/WhiteHusky/lua-streaming-tables
