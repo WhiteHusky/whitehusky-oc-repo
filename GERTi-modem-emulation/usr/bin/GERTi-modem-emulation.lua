@@ -4,17 +4,22 @@
 ]]
 
 local GERTi = require("GERTiClient")
-local buffer = require("buffer")
 local event = require("event")
+local buffer = require("buffer")
 local streamingTable = require("streaming-tables")
 local component = require("component")
 local thread = require("thread")
+local serialization = require("serialization")
 local servicePort = 5050
 local openConnections = {}
 local vbuf = 512
 GERTi_MODEM = GERTi_MODEM or nil
 
 local fauxStream = {}
+
+local function debug_print(...)
+    event.push("debug", "GERTiModem", ...)
+end
 
 function fauxStream:new()
     local o = {
@@ -47,13 +52,17 @@ end
 
 local GERTiStream = {}
 
-function GERTiStream:new(socket)
+function GERTiStream:new(socket, address)
     local o = {
         socket = socket,
-        internalString = ""
+        internalString = "",
+        writeBuf = nil,
+        address = address
     }
     setmetatable(o, self)
     self.__index = self
+    o.writeBuf = buffer.new("w", socket)
+    o.writeBuf:setvbuf("full", vbuf)
     return o
 end
 
@@ -62,31 +71,34 @@ function GERTiStream:close()
 end
 
 function GERTiStream:write(str)
-    print(str)
-    return self.socket:write(str)
+    return self.writeBuf:write(str)
+end
+
+function GERTiStream:flush()
+    return self.writeBuf:flush()
 end
 
 function GERTiStream:read(n)
-    local chunk = ""
-    print("WANT", n)
-    print("HAVE", self.internalString:len())
-    if self.internalString:len() < n then
-        print("NEED DATA")
+    local chunk = nil
+    while self.internalString:len() < n do
+        event.pull("GERTData", self.address)
         local chunks = self.socket:read()
-        local processed = 0
-        for _, value in pairs(chunks) do
-            print("CHUNK READ")
-            self.internalString = self.internalString .. value
-            processed = processed + 1
+        if chunks ~= nil then
+            local processed = 0
+            for _, value in pairs(chunks) do
+                self.internalString = self.internalString .. value
+                processed = processed + 1
+            end
+        else
+            break
         end
-        print("CHUNKS", processed)
+        os.sleep()
     end
-    chunk = self.internalString:sub(1,n)
-    self.internalString = self.internalString:sub(n+1)
-    os.sleep(1)
-    if chunk:len() > 0 then
-        print(chunk)
+    if #self.internalString > 0 then
+        chunk = self.internalString:sub(1,n)
+        self.internalString = self.internalString:sub(n+1)
     end
+    os.sleep()
     return chunk
 end
 
@@ -129,35 +141,31 @@ function GERTiModem.close(port)
     return true
 end
 
-function GERTiModem.send(...)
-    thread.create(function(addr, port, ...)
-        print(addr, port, ...)
-        openConnections[addr] = true
-        local socket = GERTi.openSocket(addr, servicePort)
-        local buf = buffer.new("rw", GERTiStream:new(socket))
-        buf:setvbuf("full", vbuf)
-        print("Waiting for acknowledgement...")
-        event.pull("GERTData", addr)
-        local response = streamingTable.unpack(buf)
-        if response.connection then
-            print("Sending connection request...")
-            streamingTable.pack(buf, {port=port})
-            buf:flush()
-            print("Waiting for response...")
-            response = streamingTable.unpack(buf)
-            local success = false
-            if response.accept then
-                print("Request accepted, sending data...")
-                streamingTable.pack(buf, {...})
-                print("Sent.")
-            else
-                print("Request declined.")
-            end
+function GERTiModem.send(addr, port, ...)
+    openConnections[addr] = true
+    local success = false
+    local socket = GERTi.openSocket(addr, servicePort)
+    local buf = GERTiStream:new(socket, addr)
+    debug_print("Waiting for acknowledgement...")
+    local response = streamingTable.unpack(buf)
+    if response.connection then
+        debug_print("Sending connection request...")
+        streamingTable.pack(buf, {port=port})
+        buf:flush()
+        debug_print("Waiting for response...")
+        response = streamingTable.unpack(buf)
+        if response.accept then
+            success = true
+            debug_print("Request accepted, sending data...")
+            streamingTable.pack(buf, {...})
+            debug_print("Sent.")
+        else
+            debug_print("Request declined.")
         end
-        openConnections[addr] = nil
-        buf:close()
-    end, ...)
-    return true
+    end
+    openConnections[addr] = nil
+    buf:close()
+    return success
 end
 
 function GERTiModem.broadcast(port, ...)
@@ -194,25 +202,24 @@ end
 local function handleGERTiConnection(...)
     thread.create(function(eventName, originAddress, connectionID)
         if originAddress ~= GERTi.getAddress() and not openConnections[originAddress] and connectionID == servicePort then
-            print("Request incoming...")
+            debug_print("Request incoming...")
             local socket = GERTi.openSocket(originAddress, connectionID)
-            local buf = buffer.new("rw", GERTiStream:new(socket))
-            buf:setvbuf("full", vbuf)
-            print("Socket open, sending acknowledgement...")
+            local buf = GERTiStream:new(socket, originAddress)
+            debug_print("Socket open, sending acknowledgement...")
             streamingTable.pack(buf, {connection=true})
             buf:flush()
-            print("Waiting for response...")
+            debug_print("Waiting for response...")
             local request = streamingTable.unpack(buf)
-            print("Unpacked...")
+            debug_print("Unpacked... ".. request.port)
             if ports[request.port] then
-                print("Port accepted, sending clearance...")
+                debug_print("Port accepted, sending clearance...")
                 streamingTable.pack(buf, {accept=true})
                 buf:flush()
-                print("Receiving payload...")
+                debug_print("Receiving payload...")
                 local payload = streamingTable.unpack(buf)
                 event.push("modem_message", GERTi.getAddress(), originAddress, request.port, table.unpack(payload))
             else
-                print("Request declined")
+                debug_print("Request declined")
                 streamingTable.pack(buf, {accept=false})
             end
             buf:close()
@@ -227,8 +234,9 @@ if GERTi_MODEM then
 end
 
 GERTi_MODEM=component.softwareComponents.addComponent("modem", GERTiModem)
+component.setPrimary("modem", GERTi_MODEM)
 
 events.GERTiConnection = event.listen("GERTConnectionID", handleGERTiConnection)
-events.GERTiData = event.listen("GERTData", print)
-events.modem_message = event.listen("modem_message", print)
-events.GERTiConnection_Debug = event.listen("GERTConnectionID", print)
+--events.GERTiData = event.listen("GERTData", print)
+--events.modem_message = event.listen("modem_message", print)
+--events.GERTiConnection_Debug = event.listen("GERTConnectionID", print)
