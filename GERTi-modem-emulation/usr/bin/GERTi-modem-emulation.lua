@@ -52,6 +52,17 @@ end
 
 local GERTiStream = {}
 
+--[[
+    GERTiStream Notes:
+    There's an issue with Buffer:read() and binary data. Using Buffer:write()
+    works perfectly fine up until you want that data through Buffer:read()
+    where binary data becomes malformed and cause issues down the line.
+
+    The fix is a half-buffer, half-self-rolled solution where writes use Buffer
+    as normal, but reads are handled by this class to emulate the blocking
+    behavior of Buffer:read() while preventing binary mangling.
+]]
+
 function GERTiStream:new(socket, address)
     local o = {
         socket = socket,
