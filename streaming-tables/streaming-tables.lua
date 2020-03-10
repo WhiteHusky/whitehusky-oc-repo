@@ -44,18 +44,18 @@ local function thingToBinary(strm, thing)
         if thing then
             d = 128 | d
         end
-        strm:write(string.pack(">B", d))
+        strm:write(string.pack("B", d))
     elseif thingType == "number" then
         if math.type(thing) == "float" then
-            strm:write(string.pack(">B", 2))
-            strm:write(string.pack(">n", thing))
+            strm:write(string.pack("B", 2))
+            strm:write(string.pack("<n", thing))
         else
-            strm:write(string.pack(">B", 3))
-            strm:write(string.pack(">j", thing))
+            strm:write(string.pack("B", 3))
+            strm:write(string.pack("<j", thing))
         end
     elseif thingType == "string" then
-        strm:write(string.pack(">B", 4))
-        strm:write(string.pack(">I4", thing:len()))
+        strm:write(string.pack("B", 4))
+        strm:write(string.pack("<I4", thing:len()))
         strm:write(thing)
     end
 end
@@ -67,31 +67,31 @@ function streamingSerialization.pack(strm, t)
         if allowedTableKeys[keyType] and allowedTableValues[valueType] then
             thingToBinary(strm, key)
             if valueType == "table" then
-                strm:write(string.pack(">B", 5))
+                strm:write(string.pack("B", 5))
                 streamingSerialization.pack(strm, value)
             else
                 thingToBinary(strm, value)
             end
         end
     end
-    strm:write(string.pack(">B",0))
+    strm:write("\0")
 end
 
 local function binaryToThing(strm)
-    local raw = string.unpack(">B", strm:read(1))
+    local raw = string.unpack("B", strm:read(1))
     local rawType = raw & 7
     local thing = nil
     if rawType == 1 then -- boolean
         thing = false
-        if (raw & 128) == 128 then
+        if (raw & 128) > 0 then
             thing = true
         end
     elseif rawType == 2 then -- float
-        thing = string.unpack(">n", strm:read(8))
+        thing = string.unpack("<n", strm:read(8))
     elseif rawType == 3 then -- integer
-        thing = string.unpack(">j", strm:read(8))
+        thing = string.unpack("<j", strm:read(8))
     elseif rawType == 4 then -- string
-        local length = string.unpack(">I4", strm:read(4))
+        local length = string.unpack("<I4", strm:read(4))
         thing = strm:read(length)
     elseif rawType == 5 then -- table
         thing = streamingSerialization.unpack(strm)
