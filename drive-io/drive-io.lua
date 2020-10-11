@@ -159,7 +159,8 @@ end
 
 function DriveIO:write(data)
     local dataLen = data:len()
-    if dataLen + self.seekPos > self.capacity then
+    -- Same issue with cached sectors. We write including the current seek position.
+    if dataLen + self.seekPos - 1 > self.capacity then
         return false, tostring(dataLen + self.seekPos - self.capacity) .. " bytes short on medium, did not write anything"
     end
     while data:len() > 0 do
