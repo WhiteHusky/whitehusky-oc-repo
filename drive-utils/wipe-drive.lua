@@ -32,6 +32,8 @@ driveIO:seek("set", 1)
 local sectorsToWipe = math.floor(driveIO.capacity / driveIO.sectorSize)
 term.write("Wiping " .. tostring(sectorsToWipe) .. " sectors... ")
 local x, _ = term.getCursor()
+local thisUptime = computer.uptime()
+local lastUptime = thisUptime
 for i = 1, sectorsToWipe, 1 do
     local result, err = driveIO:write(blankSector)
     local _, y = term.getCursor()
@@ -43,8 +45,10 @@ for i = 1, sectorsToWipe, 1 do
         break
     end
     -- for emulators
-    if i % 128 == 0 then
+    thisUptime = computer.uptime()
+    if thisUptime > lastUptime + 1 then
         os.sleep(0)
+        lastUptime = thisUptime
     end
 end
 print("")
