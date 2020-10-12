@@ -90,6 +90,7 @@ function DriveIO:expireSectorCache(sector)
         if cachedSector.dirty then
             self:debug(INFO, "wrote expired sector " .. tostring(sector))
             self.drive.writeSector(sector, cachedSector.sectorData)
+            emulatorHangPrevention()
         else
             self:debug(INFO, "expired sector " .. tostring(sector) .. " was not dirty")
         end
@@ -130,6 +131,7 @@ function DriveIO:flush()
             self.drive.writeSector(sector, cache.sectorData)
             self.sectorCacheAccessTime[sector] = computer.uptime()
             cache.dirty = false
+            emulatorHangPrevention()
         end
     end
 end
@@ -191,7 +193,6 @@ function DriveIO:write(data)
             return writeResult, writeError
         end
         self.seekPos = self.seekPos + dataSubset:len()
-        emulatorHangPrevention()
     end
     -- re-clamp seekPos
     self:seek("cur", 0)
@@ -222,7 +223,6 @@ function DriveIO:read(n)
         -- update left and seekPos
         self.seekPos = self.seekPos + reading
         left = left - reading
-        emulatorHangPrevention()
     end
     -- re-clamp seekPos
     self:seek("cur", 0)
