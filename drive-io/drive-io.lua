@@ -81,22 +81,19 @@ function DriveIO:commit()
     end
 end
 
+function DriveIO:discardSectorCache(sector)
+    self.sectorCache[sector] = nil
+    self.sectorCacheAccessTime[sector] = nil
+    self.sectorCacheCount = self.sectorCacheCount - 1
+end
+
 function DriveIO:expireSectorCache(sector)
     self:debug(INFO, "expiring sector " .. tostring(sector))
     if not self.sectorCache[sector] then
         error("cache already expired")
     else
-        local cachedSector = self.sectorCache[sector]
-        if cachedSector.dirty then
-            self:debug(INFO, "wrote expired sector " .. tostring(sector))
-            self.drive.writeSector(sector, cachedSector.sectorData)
-            emulatorHangPrevention()
-        else
-            self:debug(INFO, "expired sector " .. tostring(sector) .. " was not dirty")
-        end
-        self.sectorCache[sector] = nil
-        self.sectorCacheAccessTime[sector] = nil
-        self.sectorCacheCount = self.sectorCacheCount - 1
+        self:flushSector(sector)
+        self:discardSectorCache(sector)
     end
 end
 
@@ -107,6 +104,7 @@ function DriveIO:cacheSector(sector)
     self.sectorCache[sector] = CachedSector:new(sectorData)
     self.sectorCacheAccessTime[sector] = computer.uptime()
     self.sectorCacheCount = self.sectorCacheCount + 1
+    emulatorHangPrevention()
 end
 
 function DriveIO:freeSectorCache()
@@ -123,16 +121,25 @@ function DriveIO:freeSectorCache()
     end
 end
 
+function DriveIO:flushSectorCache(sector, cache)
+    if cache and cache.dirty then
+        self:debug(INFO, "flushing dirty sector " .. tostring(sector))
+        self.drive.writeSector(sector, cache.sectorData)
+        self.sectorCacheAccessTime[sector] = computer.uptime()
+        cache.dirty = false
+        emulatorHangPrevention()
+    end
+end
+
+function DriveIO:flushSector(sector)
+    local cache = self.sectorCache[sector]
+    self:flushSectorCache(sector, cache)
+end
+
 function DriveIO:flush()
     self:debug(INFO, "flushing changes")
     for sector, cache in pairs(self.sectorCache) do
-        if cache.dirty then
-            self:debug(INFO, "writing dirty sector " .. tostring(sector))
-            self.drive.writeSector(sector, cache.sectorData)
-            self.sectorCacheAccessTime[sector] = computer.uptime()
-            cache.dirty = false
-            emulatorHangPrevention()
-        end
+        self:flushSectorCache(sector, cache)
     end
 end
 
