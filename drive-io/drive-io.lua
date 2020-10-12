@@ -239,9 +239,9 @@ function DriveIO:seek(whence, offset)
     elseif whence == "set" then
         newOffset = offset
     elseif whence == "end" then
-        newOffset = self.capacity + offset
+        newOffset = self.capacity + offset + 1
     end
-    self.seekPos = math.max(1, math.min(newOffset, self.capacity))
+    self.seekPos = math.max(1, math.min(newOffset, self.capacity + 1))
     return self.seekPos
 end
 
