@@ -14,6 +14,15 @@ local LOG_TO_STRING = {
     [VERBOSE] = "VERBOSE"
 }
 
+local lastUptime = computer.uptime()
+local function emulatorHangPrevention()
+    local thisUptime = computer.uptime()
+    if thisUptime > lastUptime + 1 then
+        os.sleep(0)
+        lastUptime = thisUptime
+    end
+end
+
 function DriveIO:new(drive)
     -- Check for buggy emulators
     if drive.readSector(2):len() > drive.getSectorSize() then
@@ -182,6 +191,7 @@ function DriveIO:write(data)
             return writeResult, writeError
         end
         self.seekPos = self.seekPos + dataSubset:len()
+        emulatorHangPrevention()
     end
     -- re-clamp seekPos
     self:seek("cur", 0)
@@ -212,6 +222,7 @@ function DriveIO:read(n)
         -- update left and seekPos
         self.seekPos = self.seekPos + reading
         left = left - reading
+        emulatorHangPrevention()
     end
     -- re-clamp seekPos
     self:seek("cur", 0)
