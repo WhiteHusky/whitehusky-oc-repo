@@ -2,6 +2,9 @@ local DriveIO = require('drive-io')
 local component = require('component')
 local term = require('term')
 local shell = require('shell')
+local computer = require('computer')
+local str = tostring
+local fmt = string.format
 
 local args, ops = shell.parse(...)
 
@@ -38,7 +41,7 @@ for i = 1, sectorsToWipe, 1 do
     local result, err = driveIO:write(blankSector)
     local _, y = term.getCursor()
     term.setCursor(x,y)
-    term.write(string.format("%d", math.ceil((i/sectorsToWipe) * 100)) .. "%")
+    term.write(fmt("%d", math.ceil((i/sectorsToWipe) * 100)) .. "% " .. str(i) .. "/" .. str(sectorsToWipe))
     if not result then
         print("")
         print("Error: " .. err)
